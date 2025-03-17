@@ -13,7 +13,7 @@ config = {
     "dataset": {
         "name": "mlabonne/FineTome-100k",
         "split": "train",
-        # "num_samples": , # You can pass a number here to limit the number of samples to use.
+        # "num_samples": 10000, # You can pass a number here to limit the number of samples to use.
         "seed": 42
     },
     "models": {
@@ -25,7 +25,7 @@ config = {
         "chat_template": "{% for message in messages %}{% if loop.first and messages[0]['role'] != 'system' %}{{ '<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n' }}{% endif %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
     },
     "training": {
-        "output_dir": "./results",
+        "output_dir": "./distil_logits_results",
         "num_train_epochs": 3,
         "per_device_train_batch_size": 1,
         "gradient_accumulation_steps": 8,
@@ -103,12 +103,14 @@ tokenized_dataset = tokenized_dataset.train_test_split(test_size=0.1)
 print("Dataset preparation complete. Loading models...")
 
 # Load models with configurable flash attention
-model_kwargs = {"torch_dtype": torch.bfloat16}
+# set up `use_cache` as False to fix the bug that make sure to call `tokenizer.padding_side = 'left'` before tokenizing the input
+model_kwargs = {"torch_dtype": torch.bfloat16, "use_cache": False}
 if config["model_config"]["use_flash_attention"]:
     model_kwargs["attn_implementation"] = "flash_attention_2"
 
 teacher_model = AutoModelForCausalLM.from_pretrained(config["models"]["teacher"], **model_kwargs)
 student_model = AutoModelForCausalLM.from_pretrained(config["models"]["student"], **model_kwargs)
+student_tokenizer.padding_side = "left"
 
 # Optionally freeze layers of the student model based on spectrum configuration
 if "spectrum" in config and "layers_to_unfreeze" in config["spectrum"]:
@@ -136,7 +138,7 @@ def pad_logits(student_logits, teacher_logits):
     return student_logits, teacher_logits
 
 class LogitsTrainer(SFTTrainer):
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(self, model, inputs, num_items_in_batch, return_outputs=False):
         inputs = {k: v.to(model.device) if hasattr(v, 'to') else v for k, v in inputs.items()}
         self.teacher_model = self.teacher_model.to(model.device)
         
@@ -174,8 +176,8 @@ trainer = LogitsTrainer(
     eval_dataset=tokenized_dataset["test"],
     tokenizer=student_tokenizer,
     args=training_arguments,
-    max_seq_length=config["tokenizer"]["max_length"],
-    dataset_text_field="text",
+    # max_length=config["tokenizer"]["max_length"], # in the newest version of trl, max_length is exceptional
+    # dataset_text_field="text",                    # in the newest version of trl, dataset_text_field is exceptional
 )
 
 # Add the teacher model to the trainer
