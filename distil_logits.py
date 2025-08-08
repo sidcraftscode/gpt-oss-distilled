@@ -20,7 +20,7 @@ config = {
         "student": "HuggingFaceTB/SmolLM2-1.7B-Instruct"
     },
     "tokenizer": {
-        "max_length": 4096,
+        "max_length": 2048,  # Reduced for memory efficiency when not using flash attention
         "chat_template": None,  # Use default harmony format from gpt-oss-20b
         "use_harmony_format": True  # Flag to ensure proper format handling
     },
@@ -48,7 +48,7 @@ config = {
         "alpha": 0.5
     },
     "model_config": {
-        "use_flash_attention": True
+        "use_flash_attention": False
     }
     # "spectrum": {
     #     "layers_to_unfreeze": "/workspace/spectrum/snr_results_Qwen-Qwen2-1.5B_unfrozenparameters_50percent.yaml" # You can pass a spectrum yaml file here to freeze layers identified by spectrum.
@@ -57,6 +57,11 @@ config = {
 
 # Set up environment
 os.environ['WANDB_PROJECT'] = config["project_name"]
+
+# Explicitly disable flash attention at environment level
+if not config["model_config"]["use_flash_attention"]:
+    os.environ['DISABLE_FLASH_ATTENTION'] = '1'
+    print("🚫 Flash attention explicitly disabled")
 
 # Load and preprocess dataset
 dataset = load_dataset(config["dataset"]["name"], split=config["dataset"]["split"])
@@ -113,9 +118,21 @@ print("Dataset preparation complete. Loading models...")
 model_kwargs = {"torch_dtype": torch.bfloat16}
 if config["model_config"]["use_flash_attention"]:
     model_kwargs["attn_implementation"] = "flash_attention_2"
+    print("✅ Using Flash Attention 2")
+else:
+    # Use SDPA (scaled dot product attention) as a faster alternative to eager
+    model_kwargs["attn_implementation"] = "sdpa"
+    print("✅ Using SDPA attention (no flash attention)")
 
+print(f"Model loading kwargs: {model_kwargs}")
+
+print("Loading teacher model...")
 teacher_model = AutoModelForCausalLM.from_pretrained(config["models"]["teacher"], **model_kwargs)
+print("✅ Teacher model loaded successfully")
+
+print("Loading student model...")
 student_model = AutoModelForCausalLM.from_pretrained(config["models"]["student"], **model_kwargs)
+print("✅ Student model loaded successfully")
 
 # Optionally freeze layers of the student model based on spectrum configuration
 if "spectrum" in config and "layers_to_unfreeze" in config["spectrum"]:
