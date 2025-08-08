@@ -12,22 +12,23 @@ config = {
     "dataset": {
         "name": "mlabonne/FineTome-100k",
         "split": "train",
-        # "num_samples": , # You can pass a number here to limit the number of samples to use.
+        "num_samples": 1000,  # Start with smaller sample for testing gpt-oss-20b distillation
         "seed": 42
     },
     "models": {
-        "teacher": "arcee-ai/Arcee-Spark",
-        "student": "Qwen/Qwen2-1.5B"
+        "teacher": "openai/gpt-oss-20b",
+        "student": "HuggingFaceTB/SmolLM2-1.7B-Instruct"
     },
     "tokenizer": {
         "max_length": 4096,
-        "chat_template": "{% for message in messages %}{% if loop.first and messages[0]['role'] != 'system' %}{{ '<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n' }}{% endif %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
+        "chat_template": None,  # Use default harmony format from gpt-oss-20b
+        "use_harmony_format": True  # Flag to ensure proper format handling
     },
     "training": {
         "output_dir": "./results",
         "num_train_epochs": 3,
         "per_device_train_batch_size": 1,
-        "gradient_accumulation_steps": 8,
+        "gradient_accumulation_steps": 16,  # Increased for memory efficiency
         "save_steps": 1000,
         "logging_steps": 1,
         "learning_rate": 2e-5,
@@ -36,7 +37,11 @@ config = {
         "lr_scheduler_type": "cosine",
         "resume_from_checkpoint": None,  # Set to a path or True to resume from the latest checkpoint
         "fp16": False,
-        "bf16": True
+        "bf16": True,
+        "gradient_checkpointing": True,  # Essential for memory efficiency
+        "dataloader_pin_memory": False,  # Reduce memory overhead
+        "remove_unused_columns": False,  # Required for distillation
+        "deepspeed": "./deepspeed_configs/zero3_bf16_cpuoffload_params.json"  # Recommended config
     },
     "distillation": {
         "temperature": 2.0,
@@ -63,8 +68,13 @@ if "num_samples" in config["dataset"]:
 teacher_tokenizer = AutoTokenizer.from_pretrained(config["models"]["teacher"])
 student_tokenizer = AutoTokenizer.from_pretrained(config["models"]["student"])
 
-# Apply chat template to student tokenizer
-student_tokenizer.chat_template = config["tokenizer"]["chat_template"]
+# Apply chat template to student tokenizer if specified
+if config["tokenizer"]["chat_template"] is not None:
+    student_tokenizer.chat_template = config["tokenizer"]["chat_template"]
+else:
+    # Use teacher tokenizer's chat template for consistency with gpt-oss-20b harmony format
+    if hasattr(teacher_tokenizer, 'chat_template') and teacher_tokenizer.chat_template:
+        student_tokenizer.chat_template = teacher_tokenizer.chat_template
 
 def sharegpt_format(example):
     conversations = example['conversations']
