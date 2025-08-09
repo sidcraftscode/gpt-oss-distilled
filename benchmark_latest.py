@@ -130,6 +130,7 @@ def main():
             "name": "Distilled SmolLM2-1.7B (10k samples)"
         }
         # Skipping checkpoint-936 (corrupted during save)
+        # Removed GPT-OSS-20B to focus on distillation progression
     ]
     
     all_results = []
