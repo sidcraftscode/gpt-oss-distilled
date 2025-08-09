@@ -36,7 +36,7 @@ config = {
         "weight_decay": 0.05,
         "warmup_ratio": 0.1,
         "lr_scheduler_type": "cosine",
-        "resume_from_checkpoint": None,  # Set to a path or True to resume from the latest checkpoint
+        "resume_from_checkpoint": "/workspace/distillation/gpt-oss-distilled/results/checkpoint-624",  # Set to a path or True to resume from the latest checkpoint
         "fp16": False,
         "bf16": True,
         "gradient_checkpointing": True,  # Essential for memory efficiency
