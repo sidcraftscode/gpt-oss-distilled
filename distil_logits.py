@@ -12,7 +12,7 @@ config = {
     "dataset": {
         "name": "mlabonne/FineTome-100k",
         "split": "train",
-        "num_samples": 1000,  # Start with smaller sample for testing gpt-oss-20b distillation
+        # "num_samples": 1000,  # Removed - now training on full 100k dataset
         "seed": 42
     },
     "models": {
@@ -29,8 +29,13 @@ config = {
         "num_train_epochs": 3,
         "per_device_train_batch_size": 1,
         "gradient_accumulation_steps": 16,  # Increased for memory efficiency
-        "save_steps": 1000,
+        "save_steps": 312,  # Save every ~5k samples (5000/16 grad_accum_steps ≈ 312 steps)
+        "save_total_limit": 10,  # Keep 10 checkpoints (up to 50k samples)
         "logging_steps": 1,
+        "eval_steps": 312,  # Evaluate at each checkpoint
+        "evaluation_strategy": "steps",  # Enable evaluation
+        "load_best_model_at_end": True,  # Load best performing checkpoint
+        "metric_for_best_model": "eval_loss",  # Use eval loss to pick best
         "learning_rate": 2e-5,
         "weight_decay": 0.05,
         "warmup_ratio": 0.1,
@@ -121,6 +126,7 @@ if config["model_config"]["use_flash_attention"]:
     print("✅ Using Flash Attention 2")
 else:
     # Use SDPA (scaled dot product attention) as a faster alternative to eager
+    # If SDPA still causes issues, change to "eager" for maximum compatibility
     model_kwargs["attn_implementation"] = "sdpa"
     print("✅ Using SDPA attention (no flash attention)")
 
