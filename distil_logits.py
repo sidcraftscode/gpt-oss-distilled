@@ -32,10 +32,6 @@ config = {
         "save_steps": 312,  # Save every ~5k samples (5000/16 grad_accum_steps ≈ 312 steps)
         "save_total_limit": 10,  # Keep 10 checkpoints (up to 50k samples)
         "logging_steps": 1,
-        "eval_steps": 312,  # Evaluate at each checkpoint
-        "evaluation_strategy": "steps",  # Enable evaluation
-        "load_best_model_at_end": True,  # Load best performing checkpoint
-        "metric_for_best_model": "eval_loss",  # Use eval loss to pick best
         "learning_rate": 2e-5,
         "weight_decay": 0.05,
         "warmup_ratio": 0.1,
