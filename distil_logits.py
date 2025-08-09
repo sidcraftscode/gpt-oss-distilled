@@ -12,7 +12,7 @@ config = {
     "dataset": {
         "name": "mlabonne/FineTome-100k",
         "split": "train",
-        # "num_samples": 1000,  # Removed - now training on full 100k dataset
+        # "num_samples": 60000,  # Using full 100k dataset with 1 epoch = ~52 hours
         "seed": 42
     },
     "models": {
@@ -26,7 +26,7 @@ config = {
     },
     "training": {
         "output_dir": "./results",
-        "num_train_epochs": 3,
+        "num_train_epochs": 1,  # Reduced to 1 epoch to fit budget
         "per_device_train_batch_size": 1,
         "gradient_accumulation_steps": 16,  # Increased for memory efficiency
         "save_steps": 312,  # Save every ~5k samples (5000/16 grad_accum_steps ≈ 312 steps)
