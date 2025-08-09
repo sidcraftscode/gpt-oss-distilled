@@ -29,8 +29,8 @@ config = {
         "num_train_epochs": 1,  # Reduced to 1 epoch to fit budget
         "per_device_train_batch_size": 1,
         "gradient_accumulation_steps": 16,  # Increased for memory efficiency
-        "save_steps": 312,  # Save every ~5k samples (5000/16 grad_accum_steps ≈ 312 steps)
-        "save_total_limit": 10,  # Keep 10 checkpoints (up to 50k samples)
+        "save_steps": 1000,  # Save less frequently to avoid checkpoint corruption
+        "save_total_limit": 5,  # Keep fewer checkpoints to save disk space
         "logging_steps": 1,
         "learning_rate": 2e-5,
         "weight_decay": 0.05,
@@ -42,7 +42,7 @@ config = {
         "gradient_checkpointing": True,  # Essential for memory efficiency
         "dataloader_pin_memory": False,  # Reduce memory overhead
         "remove_unused_columns": False,  # Required for distillation
-        "deepspeed": "./deepspeed_configs/zero3_bf16_cpuoffload_params.json"  # Recommended config
+        "deepspeed": "./deepspeed_configs/zero3_bf16.json"  # More stable config without CPU offloading
     },
     "distillation": {
         "temperature": 2.0,
