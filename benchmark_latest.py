@@ -118,13 +118,18 @@ def main():
             "name": "Original SmolLM2-1.7B"
         },
         {
-            "path": "/workspace/distillation/gpt-oss-distilled/results/checkpoint-624",  # Updated to test 10k sample model
-            "name": "Distilled SmolLM2-1.7B (10k samples)"
+            "path": "/workspace/distillation/gpt-oss-distilled/results/checkpoint-171",
+            "name": "Distilled SmolLM2-1.7B (1k samples)"
         },
         {
-            "path": "openai/gpt-oss-20b",
-            "name": "GPT-OSS-20B (Teacher)"
+            "path": "/workspace/distillation/gpt-oss-distilled/results/checkpoint-312",
+            "name": "Distilled SmolLM2-1.7B (5k samples)"
+        },
+        {
+            "path": "/workspace/distillation/gpt-oss-distilled/results/checkpoint-624",
+            "name": "Distilled SmolLM2-1.7B (10k samples)"
         }
+        # Skipping checkpoint-936 (corrupted during save)
     ]
     
     all_results = []
