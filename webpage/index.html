@@ -125,7 +125,16 @@
         <div class="stats" id="stats">
             <div class="loading">Loading model statistics...</div>
         </div>
-
+        <div style="display: flex; gap: 20px; justify-content: center; margin-bottom: 30px;">
+            <div>
+                <label for="model1-select">Model 1:</label>
+                <select id="model1-select"></select>
+            </div>
+            <div>
+                <label for="model2-select">Model 2:</label>
+                <select id="model2-select"></select>
+            </div>
+        </div>
         <div id="comparisons">
             <div class="loading">Loading response comparisons...</div>
         </div>
@@ -134,17 +143,45 @@
     <script>
         async function loadBenchmarkData() {
             try {
-                // For local file, you'll need to serve this HTML file through a web server
-                // or manually paste the JSON data
                 const response = await fetch('benchmark_results.json');
                 const data = await response.json();
-                
-                const originalModel = data.find(model => model.model_name === "Original SmolLM2-1.7B");
-                const distilledModel = data.find(model => model.model_name === "Distilled SmolLM2-1.7B");
-                
-                displayStats(originalModel, distilledModel);
-                displayComparisons(originalModel, distilledModel);
-                
+
+                // Populate dropdowns
+                const model1Select = document.getElementById('model1-select');
+                const model2Select = document.getElementById('model2-select');
+                model1Select.innerHTML = '';
+                model2Select.innerHTML = '';
+                data.forEach((model, idx) => {
+                    const opt1 = document.createElement('option');
+                    opt1.value = idx;
+                    opt1.textContent = model.model_name;
+                    model1Select.appendChild(opt1);
+                    const opt2 = document.createElement('option');
+                    opt2.value = idx;
+                    opt2.textContent = model.model_name;
+                    model2Select.appendChild(opt2);
+                });
+                // Default to first and last models
+                model1Select.selectedIndex = 0;
+                model2Select.selectedIndex = data.length - 1;
+
+                function updateComparison() {
+                    const idx1 = parseInt(model1Select.value);
+                    const idx2 = parseInt(model2Select.value);
+                    if (idx1 === idx2) {
+                        document.getElementById('stats').innerHTML = '<div class="loading">Please select two different models.</div>';
+                        document.getElementById('comparisons').innerHTML = '';
+                        return;
+                    }
+                    const model1 = data[idx1];
+                    const model2 = data[idx2];
+                    displayStats(model1, model2);
+                    displayComparisons(model1, model2);
+                }
+                model1Select.addEventListener('change', updateComparison);
+                model2Select.addEventListener('change', updateComparison);
+                // Initial display
+                updateComparison();
             } catch (error) {
                 console.error('Error loading benchmark data:', error);
                 document.getElementById('stats').innerHTML = '<div class="loading">Error loading data. Make sure benchmark_results.json is in the same directory.</div>';

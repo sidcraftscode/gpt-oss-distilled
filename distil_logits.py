@@ -29,8 +29,8 @@ config = {
         "num_train_epochs": 1,  # Reduced to 1 epoch to fit budget
         "per_device_train_batch_size": 1,
         "gradient_accumulation_steps": 16,  # Increased for memory efficiency
-        "save_steps": 1000,  # Save less frequently to avoid checkpoint corruption
-        "save_total_limit": 5,  # Keep fewer checkpoints to save disk space
+        "save_steps": 3125,  # Save every ~50k samples (50k/16 effective batch size)
+        "save_total_limit": 2,  # Keep only 2 checkpoints to save disk space
         "logging_steps": 1,
         "learning_rate": 2e-5,
         "weight_decay": 0.05,
