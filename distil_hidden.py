@@ -12,6 +12,14 @@ from typing import Dict, List, Any
 # Set tokenizer parallelism to avoid warnings
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+# Fix CUDA memory fragmentation
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+# Clear CUDA cache to prevent fragmentation
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
+    torch.cuda.synchronize()
+
 @dataclass
 class CustomDataCollator:
     """Custom data collator that preserves teacher inputs along with student inputs"""
@@ -73,14 +81,14 @@ config = {
         "student": "HuggingFaceTB/SmolLM2-1.7B-Instruct"
     },
     "tokenizer": {
-        "max_length": 4096,  # Reduced from 4096 to save memory - can increase after testing
+        "max_length": 4096,  # Keep full context for benchmark performance
         "chat_template": "{% for message in messages %}{% if loop.first and messages[0]['role'] != 'system' %}{{ '<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n' }}{% endif %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
     },
     "training": {
         "output_dir": "./results",
         "num_train_epochs": 1,  # Single epoch often sufficient for distillation with large datasets
-        "per_device_train_batch_size": 2,  # Balanced for memory efficiency with large models
-        "gradient_accumulation_steps": 8,  # Maintains effective batch size of 16
+        "per_device_train_batch_size": 1,  # Balanced for memory efficiency with large models
+        "gradient_accumulation_steps": 16,  # Matching distil_logits.py
         "save_steps": 1000,
         "logging_steps": 2,
         "save_total_limit": 2,
@@ -93,10 +101,11 @@ config = {
         "bf16": True,
         "max_grad_norm": 1.0,
         "group_by_length": False,
-        "gradient_checkpointing": True,  # Essential for memory efficiency on H100
-        "dataloader_pin_memory": True,  # H100 optimization
+        "gradient_checkpointing": True,  # Essential for memory efficiency
+        "dataloader_pin_memory": False,  # Matching distil_logits.py for memory savings
         "dataloader_num_workers": 2,  # Reduced to save memory
         "remove_unused_columns": False,  # Required for distillation
+        "deepspeed": "./deepspeed_configs/zero3_bf16.json",  # DeepSpeed ZeRO-3 for memory efficiency
     },
     "distillation": {
         "temperature": 2.0,  # Not used for hidden state distillation, kept for compatibility
@@ -226,7 +235,7 @@ adaptation_layer = MultiLayerAdaptationLayer(
 class CustomSFTTrainer(SFTTrainer):
     def __init__(self, *args, **kwargs):
         self.remove_unused_columns = kwargs.pop('remove_unused_columns', None)
-        self.max_seq_length = kwargs.pop('max_seq_length', 1024)  # Use pop to remove from kwargs
+        self.max_seq_length = kwargs.pop('max_seq_length', 4096)  # Keep full context length
         self.tokenizer = kwargs.pop('tokenizer', None)  # Remove tokenizer from kwargs
         self.packing = kwargs.pop('packing', False)  # Remove packing from kwargs
         super(CustomSFTTrainer, self).__init__(*args, **kwargs)
