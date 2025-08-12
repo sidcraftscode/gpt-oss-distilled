@@ -174,6 +174,7 @@ class CustomSFTTrainer(SFTTrainer):
         self.remove_unused_columns = kwargs.pop('remove_unused_columns', None)
         self.max_seq_length = kwargs.pop('max_seq_length', 1024)  # Use pop to remove from kwargs
         self.tokenizer = kwargs.pop('tokenizer', None)  # Remove tokenizer from kwargs
+        self.packing = kwargs.pop('packing', False)  # Remove packing from kwargs
         super(CustomSFTTrainer, self).__init__(*args, **kwargs)
 
     def compute_loss(self, model, inputs, return_outputs=False):
