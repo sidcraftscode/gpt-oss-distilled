@@ -47,7 +47,7 @@ config = {
         "alpha": 0.5
     },
     "model_config": {
-        "use_flash_attention": False
+        "use_flash_attention": True
     }
 }
 
@@ -67,6 +67,12 @@ dataset = dataset.shuffle(seed=config["dataset"]["seed"])
 # Load tokenizers
 teacher_tokenizer = AutoTokenizer.from_pretrained(config["models"]["teacher"])
 student_tokenizer = AutoTokenizer.from_pretrained(config["models"]["student"])
+
+# Set padding tokens
+if teacher_tokenizer.pad_token is None:
+    teacher_tokenizer.pad_token = teacher_tokenizer.eos_token
+if student_tokenizer.pad_token is None:
+    student_tokenizer.pad_token = student_tokenizer.eos_token
 
 # Apply chat template to student tokenizer
 student_tokenizer.chat_template = config["tokenizer"]["chat_template"]
