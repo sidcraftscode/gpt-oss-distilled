@@ -27,8 +27,8 @@ config = {
     "training": {
         "output_dir": "./results",
         "num_train_epochs": 3,
-        "per_device_train_batch_size": 1,
-        "gradient_accumulation_steps": 8,
+        "per_device_train_batch_size": 4,  # Increased for H100 - can go higher
+        "gradient_accumulation_steps": 4,  # Reduced since batch size increased  
         "save_steps": 1000,
         "logging_steps": 2,
         "save_total_limit": 2,
@@ -40,15 +40,25 @@ config = {
         "fp16": False,
         "bf16": True,
         "max_grad_norm": 1.0,
-        "group_by_length": False
+        "group_by_length": False,
+        "gradient_checkpointing": True,  # Essential for memory efficiency on H100
+        "dataloader_pin_memory": True,  # H100 optimization
+        "dataloader_num_workers": 8,  # Parallel data loading
+        "remove_unused_columns": False,  # Required for distillation
     },
     "distillation": {
         "temperature": 2.0,
         "alpha": 0.5
     },
     "model_config": {
-        "use_flash_attention": True
-    }
+        "use_flash_attention": True,  # Already optimal for H100
+        "torch_compile": True,  # H100 benefits significantly from torch.compile
+        "use_cache": False,  # Disable KV cache during training for memory savings
+    },
+    # H100 Advanced Optimization Notes:
+    # - For maximum utilization, add DeepSpeed: "deepspeed": "./deepspeed_configs/zero2.json"
+    # - Can increase per_device_train_batch_size to 8-16 with proper memory management
+    # - Consider sequence length tuning: shorter sequences = larger batch sizes
 }
 
 # Set up environment
@@ -114,8 +124,18 @@ model_kwargs = {"torch_dtype": torch.bfloat16 if config["training"]["bf16"] else
 if config["model_config"]["use_flash_attention"]:
     model_kwargs["attn_implementation"] = "flash_attention_2"
 
+# Disable cache during training for memory efficiency
+if not config["model_config"]["use_cache"]:
+    model_kwargs["use_cache"] = False
+
 teacher_model = AutoModelForCausalLM.from_pretrained(config["models"]["teacher"], **model_kwargs).to(device)
 student_model = AutoModelForCausalLM.from_pretrained(config["models"]["student"], **model_kwargs).to(device)
+
+# Apply torch.compile for H100 optimization (if enabled)
+if config["model_config"]["torch_compile"]:
+    print("🚀 Applying torch.compile optimization for H100...")
+    student_model = torch.compile(student_model, mode="max-autotune")
+    teacher_model = torch.compile(teacher_model, mode="max-autotune")
 
 class MultiLayerAdaptationLayer(torch.nn.Module):
     def __init__(self, student_dim, teacher_dim, num_student_layers, num_teacher_layers, dtype=torch.bfloat16):
@@ -152,7 +172,7 @@ adaptation_layer = MultiLayerAdaptationLayer(
 class CustomSFTTrainer(SFTTrainer):
     def __init__(self, *args, **kwargs):
         self.remove_unused_columns = kwargs.pop('remove_unused_columns', None)
-        self.max_seq_length = kwargs.get('max_seq_length', 1024)
+        self.max_seq_length = kwargs.pop('max_seq_length', 1024)  # Use pop to remove from kwargs
         super(CustomSFTTrainer, self).__init__(*args, **kwargs)
 
     def compute_loss(self, model, inputs, return_outputs=False):
