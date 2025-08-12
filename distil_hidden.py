@@ -13,7 +13,7 @@ config = {
     "dataset": {
         "name": "mlabonne/FineTome-100k",
         "split": "train",
-        "num_samples": 1000, # You can pass a number here to limit the number of samples to use.
+        # "num_samples": 100000, # You can pass a number here to limit the number of samples to use.
         "seed": 42
     },
     "models": {
