@@ -51,7 +51,7 @@ config = {
         "alpha": 0.5
     },
     "model_config": {
-        "use_flash_attention": True,  # Already optimal for H100
+        "use_flash_attention": False,  # Disabled due to import issues
         "torch_compile": True,  # H100 benefits significantly from torch.compile
         "use_cache": False,  # Disable KV cache during training for memory savings
     },
