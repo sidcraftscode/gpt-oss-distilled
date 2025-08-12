@@ -119,16 +119,6 @@ TASKS_TABLE = [
         metric=[Metrics.loglikelihood_acc_norm_nospace],
     ),
     LightevalTaskConfig(
-        name="piqa",
-        prompt_function=prompt.piqa_harness,
-        suite=["custom"],
-        hf_repo="ybisk/piqa",
-        hf_subset="plain_text",
-        hf_revision="2e8ac2dffd59bac8c3c6714948f4c551a0848bb0",
-        trust_dataset=True,
-        metric=[Metrics.loglikelihood_acc_norm_nospace],
-    ),
-    LightevalTaskConfig(
         name="trivia_qa",
         prompt_function=prompt.triviaqa,
         suite=["custom"],
