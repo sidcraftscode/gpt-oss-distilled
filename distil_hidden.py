@@ -3,9 +3,61 @@ import torch
 import torch.nn.functional as F
 from datasets import load_dataset
 from trl import SFTTrainer
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, DataCollatorWithPadding
 from accelerate import Accelerator
 import yaml
+from dataclasses import dataclass
+from typing import Dict, List, Any
+
+# Set tokenizer parallelism to avoid warnings
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+@dataclass
+class CustomDataCollator:
+    """Custom data collator that preserves teacher inputs along with student inputs"""
+    tokenizer: AutoTokenizer
+    padding: bool = True
+    max_length: int = None
+    
+    def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
+        # Extract all the keys we need to preserve
+        batch = {}
+        
+        # Standard keys for student model
+        for key in ["input_ids", "attention_mask", "labels"]:
+            if key in features[0]:
+                batch[key] = [feature[key] for feature in features]
+        
+        # Teacher-specific keys
+        for key in ["teacher_input_ids", "teacher_attention_mask"]:
+            if key in features[0]:
+                batch[key] = [feature[key] for feature in features]
+        
+        # Convert to tensors and pad if needed
+        for key, values in batch.items():
+            if isinstance(values[0], list):
+                # Pad sequences
+                max_len = max(len(v) for v in values) if self.max_length is None else self.max_length
+                padded_values = []
+                for v in values:
+                    if len(v) < max_len:
+                        if key in ["input_ids", "teacher_input_ids"]:
+                            pad_value = self.tokenizer.pad_token_id if self.tokenizer.pad_token_id is not None else 0
+                        elif key in ["attention_mask", "teacher_attention_mask"]:
+                            pad_value = 0
+                        elif key == "labels":
+                            pad_value = -100
+                        else:
+                            pad_value = 0
+                        v = v + [pad_value] * (max_len - len(v))
+                    elif len(v) > max_len:
+                        v = v[:max_len]
+                    padded_values.append(v)
+                batch[key] = torch.tensor(padded_values)
+            else:
+                batch[key] = torch.tensor(values)
+        
+        return batch
 
 # Configuration
 config = {
@@ -13,7 +65,7 @@ config = {
     "dataset": {
         "name": "mlabonne/FineTome-100k",
         "split": "train",
-        "num_samples": 10, # You can pass a number here to limit the number of samples to use.
+        "num_samples": 10, # Small test run to verify script works, then increase for full training
         "seed": 42
     },
     "models": {
@@ -26,15 +78,15 @@ config = {
     },
     "training": {
         "output_dir": "./results",
-        "num_train_epochs": 3,
+        "num_train_epochs": 1,  # Single epoch often sufficient for distillation with large datasets
         "per_device_train_batch_size": 4,  # Increased for H100 - can go higher
         "gradient_accumulation_steps": 4,  # Reduced since batch size increased  
         "save_steps": 1000,
         "logging_steps": 2,
         "save_total_limit": 2,
-        "learning_rate": 2e-5,
+        "learning_rate": 1e-5,  # Lower LR for distillation to avoid catastrophic forgetting
         "weight_decay": 0.01,
-        "warmup_ratio": 0.2,
+        "warmup_ratio": 0.1,  # Shorter warmup for distillation
         "lr_scheduler_type": "linear",
         "resume_from_checkpoint": None,
         "fp16": False,
@@ -47,8 +99,9 @@ config = {
         "remove_unused_columns": False,  # Required for distillation
     },
     "distillation": {
-        "temperature": 2.0,
-        "alpha": 0.5
+        "temperature": 2.0,  # Not used for hidden state distillation, kept for compatibility
+        "alpha": 0.7,  # Increased focus on distillation loss for better knowledge transfer
+        "loss_type": "cosine"  # Options: "mse", "cosine", "huber" - cosine often works best for representations
     },
     "model_config": {
         "use_flash_attention": False,  # Disabled due to import issues
@@ -108,6 +161,7 @@ def prepare_dataset(example):
     return {
         "input_ids": student_encodings["input_ids"],
         "attention_mask": student_encodings["attention_mask"],
+        "labels": student_encodings["input_ids"].copy(),  # For language modeling, labels are same as input_ids
         "teacher_input_ids": teacher_encodings["input_ids"],
         "teacher_attention_mask": teacher_encodings["attention_mask"],
     }
@@ -217,20 +271,43 @@ class CustomSFTTrainer(SFTTrainer):
             if adapted_student_hidden_states[student_hidden].shape != teacher_hidden.shape:
                 raise ValueError(f"Shape mismatch: student {adapted_student_hidden_states[student_hidden].shape} vs teacher {teacher_hidden.shape}")
 
-            student_probs = F.softmax(adapted_student_hidden_states[student_hidden] / config["distillation"]["temperature"], dim=-1)
-            teacher_probs = F.softmax(teacher_hidden / config["distillation"]["temperature"], dim=-1)
-
-            loss_kd = F.kl_div(
-                F.log_softmax(adapted_student_hidden_states[student_hidden] / config["distillation"]["temperature"], dim=-1),
-                teacher_probs,
-                reduction='batchmean'
-            ) * (config["distillation"]["temperature"] ** 2)
+            # Option 1: MSE Loss (most common for hidden state distillation)
+            if config["distillation"].get("loss_type", "mse") == "mse":
+                loss_kd = F.mse_loss(
+                    adapted_student_hidden_states[student_hidden], 
+                    teacher_hidden,
+                    reduction='mean'
+                )
+            
+            # Option 2: Cosine Similarity Loss (often better for representations)
+            elif config["distillation"]["loss_type"] == "cosine":
+                # Normalize hidden states
+                student_norm = F.normalize(adapted_student_hidden_states[student_hidden], p=2, dim=-1)
+                teacher_norm = F.normalize(teacher_hidden, p=2, dim=-1)
+                
+                # Cosine similarity (we want to maximize it, so minimize negative)
+                cosine_sim = F.cosine_similarity(student_norm, teacher_norm, dim=-1)
+                loss_kd = (1 - cosine_sim).mean()  # Convert to loss (0 = perfect match)
+            
+            # Option 3: Huber Loss (robust to outliers)
+            elif config["distillation"]["loss_type"] == "huber":
+                loss_kd = F.huber_loss(
+                    adapted_student_hidden_states[student_hidden],
+                    teacher_hidden,
+                    reduction='mean',
+                    delta=1.0
+                )
+            
+            else:
+                raise ValueError(f"Unknown loss_type: {config['distillation']['loss_type']}")
 
             total_loss_kd += loss_kd
 
         avg_loss_kd = total_loss_kd / len(self.adaptation_layer.layer_mapping)
+        
+        # Scale the loss appropriately
         hidden_dim = adapted_student_hidden_states[0].size(-1)
-        scaled_loss_kd = avg_loss_kd / hidden_dim
+        scaled_loss_kd = avg_loss_kd / (hidden_dim ** 0.5)  # Scale by sqrt(hidden_dim) for stability
 
         total_loss = config["distillation"]["alpha"] * scaled_loss_kd + (1 - config["distillation"]["alpha"]) * original_loss
         return total_loss
@@ -238,6 +315,12 @@ class CustomSFTTrainer(SFTTrainer):
 # Training arguments
 training_arguments = TrainingArguments(
     **config["training"],
+)
+
+# Create custom data collator
+custom_data_collator = CustomDataCollator(
+    tokenizer=student_tokenizer,
+    max_length=config["tokenizer"]["max_length"]
 )
 
 # Create the custom SFT Trainer
@@ -248,6 +331,7 @@ trainer = CustomSFTTrainer(
     tokenizer=student_tokenizer,
     args=training_arguments,
     packing=config["training"].get("packing", False),
+    data_collator=custom_data_collator,
 )
 
 # Add these attributes to the trainer
