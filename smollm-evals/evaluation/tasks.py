@@ -100,16 +100,6 @@ TASKS_TABLE = [
         metric=[Metrics.loglikelihood_acc_norm_nospace],
     ),
     LightevalTaskConfig(
-        name="hellaswag",
-        prompt_function=prompt_hellaswag,
-        suite=["custom"],
-        hf_repo="Rowan/hellaswag",
-        hf_subset="default",
-        hf_revision="6002345709e0801764318f06bf06ce1e7d1a1fe3",
-        trust_dataset=True,
-        metric=[Metrics.loglikelihood_acc_norm_nospace],
-    ),
-    LightevalTaskConfig(
         name="commonsense_qa",
         prompt_function=prompt_commonsense_qa,
         suite=["custom"],
