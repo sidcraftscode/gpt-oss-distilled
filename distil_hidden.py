@@ -65,7 +65,7 @@ config = {
     "dataset": {
         "name": "mlabonne/FineTome-100k",
         "split": "train",
-        "num_samples": 10, # Small test run to verify script works, then increase for full training
+        # "num_samples": 10, # Small test run to verify script works, then increase for full training
         "seed": 42
     },
     "models": {
