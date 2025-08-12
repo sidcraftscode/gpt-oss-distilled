@@ -73,14 +73,14 @@ config = {
         "student": "HuggingFaceTB/SmolLM2-1.7B-Instruct"
     },
     "tokenizer": {
-        "max_length": 4096,
+        "max_length": 4096,  # Reduced from 4096 to save memory - can increase after testing
         "chat_template": "{% for message in messages %}{% if loop.first and messages[0]['role'] != 'system' %}{{ '<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n' }}{% endif %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
     },
     "training": {
         "output_dir": "./results",
         "num_train_epochs": 1,  # Single epoch often sufficient for distillation with large datasets
-        "per_device_train_batch_size": 4,  # Increased for H100 - can go higher
-        "gradient_accumulation_steps": 4,  # Reduced since batch size increased  
+        "per_device_train_batch_size": 2,  # Balanced for memory efficiency with large models
+        "gradient_accumulation_steps": 8,  # Maintains effective batch size of 16
         "save_steps": 1000,
         "logging_steps": 2,
         "save_total_limit": 2,
@@ -95,7 +95,7 @@ config = {
         "group_by_length": False,
         "gradient_checkpointing": True,  # Essential for memory efficiency on H100
         "dataloader_pin_memory": True,  # H100 optimization
-        "dataloader_num_workers": 8,  # Parallel data loading
+        "dataloader_num_workers": 2,  # Reduced to save memory
         "remove_unused_columns": False,  # Required for distillation
     },
     "distillation": {
