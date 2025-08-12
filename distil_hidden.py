@@ -105,7 +105,7 @@ config = {
         "dataloader_pin_memory": False,  # Matching distil_logits.py for memory savings
         "dataloader_num_workers": 2,  # Reduced to save memory
         "remove_unused_columns": False,  # Required for distillation
-        "deepspeed": "./deepspeed_configs/zero3_bf16.json",  # DeepSpeed ZeRO-3 for memory efficiency
+        # "deepspeed": "./deepspeed_configs/zero3_bf16.json",  # Disabled for single GPU testing
     },
     "distillation": {
         "temperature": 2.0,  # Not used for hidden state distillation, kept for compatibility
