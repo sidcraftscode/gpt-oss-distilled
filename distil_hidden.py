@@ -177,7 +177,7 @@ class CustomSFTTrainer(SFTTrainer):
         self.packing = kwargs.pop('packing', False)  # Remove packing from kwargs
         super(CustomSFTTrainer, self).__init__(*args, **kwargs)
 
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         student_inputs = {
             "input_ids": inputs["input_ids"],
             "attention_mask": inputs["attention_mask"],
