@@ -17,8 +17,8 @@ config = {
         "seed": 42
     },
     "models": {
-        "teacher": "arcee-ai/Arcee-Spark",
-        "student": "Qwen/Qwen2-1.5B"
+        "teacher": "openai/gpt-oss-20b",
+        "student": "HuggingFaceTB/SmolLM2-1.7B-Instruct"
     },
     "tokenizer": {
         "max_length": 4096,
