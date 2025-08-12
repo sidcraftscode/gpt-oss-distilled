@@ -105,7 +105,7 @@ config = {
     },
     "model_config": {
         "use_flash_attention": False,  # Disabled due to import issues
-        "torch_compile": True,  # H100 benefits significantly from torch.compile
+        "torch_compile": False,  # Disabled for testing to avoid AUTOTUNE noise - re-enable for full training
         "use_cache": False,  # Disable KV cache during training for memory savings
     },
     # H100 Advanced Optimization Notes:
