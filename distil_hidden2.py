@@ -79,7 +79,7 @@ config = {
         "num_train_epochs": 1,
         "per_device_train_batch_size": 2,
         "gradient_accumulation_steps": 16,
-        "save_steps": 1000,
+        "save_steps": 100,
         "logging_steps": 2,
         "save_total_limit": 2,
         "learning_rate": 1e-5,
@@ -704,8 +704,9 @@ class KDTrainer(SFTTrainer):
             alpha_eff = float(min(alpha_max, alpha_max * (step / max(1, 1000))))
 
         total = alpha_eff * kd_loss + (1.0 - alpha_eff) * xe_loss
-        # Safety net: replace any remaining NaNs with KD loss
-        total = torch.nan_to_num(total, nan=kd_loss, posinf=kd_loss, neginf=kd_loss)
+        # Safety net: replace any remaining NaNs with finite values
+        if torch.isnan(total).any():
+            total = torch.where(torch.isnan(total), kd_loss, total)
 
         # log for diagnostics
         # AFTER (safe: scalars)
@@ -733,6 +734,7 @@ training_args = TrainingArguments(
 # -------------------------------
 trainer = KDTrainer(
     model=student_model,
+    tokenizer=student_tokenizer,
     train_dataset=dataset,
     args=training_args,
     data_collator=collator,
