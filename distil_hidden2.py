@@ -48,9 +48,9 @@ if torch.cuda.is_available():
 # -------------------------------
 config = {
     "dataset": {
-        "name": "mlabonne/FineTome-100k",
-        "split": "train",
-        "num_samples": 10,  # quick smoke test; raise for full training
+        "name": "mlabonne/FineTome-100k",  # unused with mixture loading
+        "split": "train",                 # unused with mixture loading
+        "num_samples": 10,               # unused with mixture loading  
         "seed": SEED,
     },
     "models": {
@@ -100,7 +100,7 @@ config = {
         "alpha": 0.7,            # weight on KD vs XE
         "loss_type": "cosine",   # "cosine" | "mse" | "huber"
         "use_pooled_kd": False,  # fallback for tokenization mismatch
-        "last_k_layers": None,   # None = all layers, int = last K layers only
+        "last_k_layers": 8,      # None = all layers, int = last K layers (8 recommended for stability)
     },
     "model_config": {
         "use_flash_attention": False,  # set True only if your env has FA2 installed
@@ -162,49 +162,49 @@ def map_messages(example):
 # -------------------------------
 MIXTURE = [
     # General chat/knowledge (keeps your current behavior)
-    {"name": "mlabonne/FineTome-100k",                 "split": "train", "weight": 0.40, "adapter": map_sharegpt},
+    {"name": "mlabonne/FineTome-100k", "split": "train", "weight": 0.40, "adapter": map_sharegpt},
 
     # General instruction-following (broad coverage; messages schema)
-    {"name": "HuggingFaceH4/ultrachat_200k",          "split": "train", "weight": 0.15, "adapter": map_messages},
+    {"name": "HuggingFaceH4/ultrachat_200k", "split": "train_sft", "weight": 0.15, "adapter": map_messages},
 
     # Math (CoT-style reasoning; boosts AIME/HiddenMath/ARC-c/GPQA)
-    {"name": "meta-math/MetaMathQA",                  "split": "train", "weight": 0.10, "adapter": map_qa},
-    {"name": "openmathinstruct/OpenMathInstruct-2",   "split": "train", "weight": 0.10, "adapter": map_alpaca},
+    {"name": "meta-math/MetaMathQA", "split": "train", "weight": 0.10, "adapter": map_qa},
+    {"name": "openmathinstruct/OpenMathInstruct-2", "split": "train", "weight": 0.10, "adapter": map_alpaca},
 
     # Code instruction (boosts LCB/MBPP/HumanEval/CodeGolf)
-    {"name": "ise-uiuc/Magicoder-OSS-Instruct-75K",   "split": "train", "weight": 0.15, "adapter": map_code_instruct},
-
-    # Multilingual alignment (MGSM, Global-MMLU, WMT-like)
-    {"name": "CohereForAI/aya_collection",            "split": "train", "weight": 0.10, "adapter": map_messages},
+    {"name": "ise-uiuc/Magicoder-OSS-Instruct-75K", "split": "train", "weight": 0.15, "adapter": map_code_instruct},
 ]
 
-def load_mixture(mixture, seed=42, per_dataset_max=None):
-    shards, probs = [], []
+def load_mixture(mixture, seed=42, target_total=None):
+    shards = []
     for spec in mixture:
         ds = load_dataset(spec["name"], split=spec.get("split", "train"))
-        if per_dataset_max is not None:
-            n = min(per_dataset_max, len(ds))
+        if target_total is not None:
+            n = int(target_total * float(spec.get("weight", 1.0)))
+            n = min(n, len(ds))
             ds = ds.shuffle(seed=seed).select(range(n))
         ds = ds.map(spec["adapter"], remove_columns=ds.column_names)
-
+        
         # keep only examples that produced ≥2 turns
         def _ok(e):
             c = e.get("conversations", [])
             return isinstance(c, list) and len(c) >= 2
         ds = ds.filter(_ok)
-
+        
         shards.append(ds)
-        probs.append(float(spec.get("weight", 1.0)))
-
-    S = sum(probs) if sum(probs) > 0 else 1.0
-    probs = [p / S for p in probs]
-    return interleave_datasets(shards, probabilities=probs, seed=seed)
+    
+    # sizes are already set to your weights; use all samples
+    return interleave_datasets(shards, seed=seed, stopping_strategy="all_exhausted")
 
 # -------------------------------
 # Data (mixture)
-# For a quick smoke test, set per_dataset_max=2000 (or similar).
+# Choose target size based on your goals:
+# - Smoke test: target_total=10_000 (~10 mins)
+# - Baseline: target_total=300_000 (~200-300M tokens, solid gains)
+# - Production: target_total=500_000 (~350M-1B tokens, better capability)
+# - Max: target_total=1_000_000 (~1B+ tokens, diminishing returns)
 # -------------------------------
-dataset = load_mixture(MIXTURE, seed=config["dataset"]["seed"], per_dataset_max=None)
+dataset = load_mixture(MIXTURE, seed=config["dataset"]["seed"], target_total=300_000)
 
 # -------------------------------
 # Tokenizers
