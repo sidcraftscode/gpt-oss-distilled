@@ -722,7 +722,6 @@ training_args = TrainingArguments(
 # -------------------------------
 trainer = KDTrainer(
     model=student_model,
-    tokenizer=student_tokenizer,
     train_dataset=dataset,
     args=training_args,
     data_collator=collator,
