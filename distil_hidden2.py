@@ -162,10 +162,10 @@ def map_messages(example):
 # -------------------------------
 MIXTURE = [
     # General chat/knowledge (keeps your current behavior)
-    {"name": "mlabonne/FineTome-100k", "split": "train", "weight": 0.40, "adapter": map_sharegpt},
+    {"name": "mlabonne/FineTome-100k", "split": "train", "weight": 0.45, "adapter": map_sharegpt},
 
     # General instruction-following (broad coverage; messages schema)
-    {"name": "HuggingFaceH4/ultrachat_200k", "split": "train_sft", "weight": 0.15, "adapter": map_messages},
+    {"name": "HuggingFaceH4/ultrachat_200k", "split": "train_sft", "weight": 0.20, "adapter": map_messages},
 
     # Math (CoT-style reasoning; boosts AIME/HiddenMath/ARC-c/GPQA)
     {"name": "meta-math/MetaMathQA", "split": "train", "weight": 0.10, "adapter": map_qa},
@@ -354,8 +354,8 @@ class KDDataCollator:
         while i <= L - len(start_ids):
             if input_ids[i : i + len(start_ids)] == start_ids:
                 j = i + len(start_ids)
-                # label until the next <|im_end|>
-                while j <= L - len(end_ids) and input_ids[j : j + len(end_ids)] != end_ids:
+                # label until the next <|im_end|> (or end if truncated)
+                while j < L and not (j <= L - len(end_ids) and input_ids[j:j+len(end_ids)] == end_ids):
                     labels[j] = input_ids[j]
                     j += 1
                 i = j
@@ -693,10 +693,19 @@ class KDTrainer(SFTTrainer):
                     )
         kd_loss = torch.stack(kd_losses).mean()
 
-        # KD warm-up: ramp alpha from 0 → target over ~1000 steps
-        alpha_max = config["distillation"]["alpha"]
-        alpha = float(min(alpha_max, alpha_max * (step / max(1, 1000))))
-        total = alpha * kd_loss + (1.0 - alpha) * xe_loss
+        # Guard against NaN XE loss (happens when all labels are -100)
+        if (xe_loss is None) or torch.isnan(xe_loss):
+            # batch has no valid supervised tokens → KD-only this step
+            xe_loss = torch.zeros((), device=kd_loss.device, dtype=kd_loss.dtype)
+            alpha_eff = 1.0
+        else:
+            # KD warm-up: ramp alpha from 0 → target over ~1000 steps
+            alpha_max = config["distillation"]["alpha"]
+            alpha_eff = float(min(alpha_max, alpha_max * (step / max(1, 1000))))
+
+        total = alpha_eff * kd_loss + (1.0 - alpha_eff) * xe_loss
+        # Safety net: replace any remaining NaNs with KD loss
+        total = torch.nan_to_num(total, nan=kd_loss, posinf=kd_loss, neginf=kd_loss)
 
         # log for diagnostics
         # AFTER (safe: scalars)
@@ -704,7 +713,7 @@ class KDTrainer(SFTTrainer):
             "loss_total": float(total.detach().mean().item()),
             "loss_xe": float(xe_loss.detach().mean().item()),
             "loss_kd": float(kd_loss.detach().mean().item()),
-            "alpha": float(alpha),
+            "alpha": float(alpha_eff),
             "step": int(step),
             "use_pooled_kd": int(use_pooled),
         })
