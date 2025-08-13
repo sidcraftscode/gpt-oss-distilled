@@ -699,14 +699,16 @@ class KDTrainer(SFTTrainer):
         total = alpha * kd_loss + (1.0 - alpha) * xe_loss
 
         # log for diagnostics
+        # AFTER (safe: scalars)
         self.log({
-            "loss_total": total.detach(),
-            "loss_xe": xe_loss.detach(),
-            "loss_kd": kd_loss.detach(),
-            "alpha": alpha,
-            "step": step,
-            "use_pooled_kd": use_pooled,
+            "loss_total": float(total.detach().mean().item()),
+            "loss_xe": float(xe_loss.detach().mean().item()),
+            "loss_kd": float(kd_loss.detach().mean().item()),
+            "alpha": float(alpha),
+            "step": int(step),
+            "use_pooled_kd": int(use_pooled),
         })
+
 
         return (total, student_out) if return_outputs else total
 
