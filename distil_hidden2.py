@@ -169,7 +169,7 @@ MIXTURE = [
 
     # Math (CoT-style reasoning; boosts AIME/HiddenMath/ARC-c/GPQA)
     {"name": "meta-math/MetaMathQA", "split": "train", "weight": 0.10, "adapter": map_qa},
-    {"name": "openmathinstruct/OpenMathInstruct-2", "split": "train", "weight": 0.10, "adapter": map_alpaca},
+    {"name": "nvidia/OpenMathInstruct-2", "split": "train", "weight": 0.10, "adapter": map_alpaca},
 
     # Code instruction (boosts LCB/MBPP/HumanEval/CodeGolf)
     {"name": "ise-uiuc/Magicoder-OSS-Instruct-75K", "split": "train", "weight": 0.15, "adapter": map_code_instruct},
