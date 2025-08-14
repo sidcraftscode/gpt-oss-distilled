@@ -574,18 +574,6 @@ class KDTrainer(SFTTrainer):
             )
         return self.optimizer
 
-    def _move_optimizer_to_device(self, device):
-        """Move all optimizer states to the specified device"""
-        if self.optimizer is None:
-            return
-        
-        for state in self.optimizer.state.values():
-            for k, v in state.items():
-                if torch.is_tensor(v):
-                    state[k] = v.to(device)
-
-
-
     def _mean_pool(self, h: torch.Tensor, m: torch.Tensor) -> torch.Tensor:
         """Sequence-pooled representation: h [B,T,D], m [B,T] -> [B,D]"""
         m = m.unsqueeze(-1).to(h.dtype)  # [B, T, 1]
@@ -784,25 +772,49 @@ trainer = KDTrainer(
 trainer.add_callback(GradProbe())
 
 # -------------------------------
-# Fix optimizer device mismatch when resuming from checkpoint
+# Optimizer device fix utilities
 # -------------------------------
 def fix_optimizer_device_mismatch(trainer):
     """Ensure all optimizer states are on the same device as model parameters"""
     if trainer.optimizer is not None:
         model_device = next(trainer.model.parameters()).device
+        moved_count = 0
         for state in trainer.optimizer.state.values():
             for k, v in state.items():
                 if torch.is_tensor(v) and v.device != model_device:
                     state[k] = v.to(model_device)
-        print(f"Fixed optimizer device mismatch: moved states to {model_device}")
+                    moved_count += 1
+        if moved_count > 0:
+            print(f"Fixed optimizer device mismatch: moved {moved_count} tensors to {model_device}")
+
+class OptimizerDeviceFix(TrainerCallback):
+    """Callback to ensure optimizer states are on correct device when training begins"""
+    def on_train_begin(self, args, state, control, **kwargs):
+        trainer = kwargs.get("trainer")
+        if trainer:
+            fix_optimizer_device_mismatch(trainer)
 
 # -------------------------------
-# Train & Save
+# Train & Save  
 # -------------------------------
-# Create optimizer first if resuming from checkpoint
+# For checkpoint resuming, we need to fix optimizer devices AFTER Accelerate prepares everything
 if config["training"]["resume_from_checkpoint"]:
+    print(f"Resuming from checkpoint: {config['training']['resume_from_checkpoint']}")
+    
+    # Create and prepare optimizer/scheduler with Accelerate BEFORE training
     trainer.create_optimizer()
+    trainer.create_scheduler(num_training_steps=trainer.get_num_train_epochs() * len(trainer.get_train_dataloader()))
+    
+    # Let Accelerate prepare everything
+    trainer.model, trainer.optimizer, trainer.lr_scheduler = trainer.accelerator.prepare(
+        trainer.model, trainer.optimizer, trainer.lr_scheduler
+    )
+    
+    # NOW fix device mismatch after Accelerate preparation
     fix_optimizer_device_mismatch(trainer)
+
+# Add callback for extra safety
+trainer.add_callback(OptimizerDeviceFix())
 
 trainer.train(resume_from_checkpoint=config["training"]["resume_from_checkpoint"])
 
