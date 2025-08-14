@@ -26,6 +26,33 @@ from transformers import (
 from trl import SFTTrainer
 
 # -------------------------------
+# PyTorch 2.6 compatibility fix for checkpoint loading
+# -------------------------------
+_original_torch_load = torch.load
+
+def _patched_torch_load(*args, **kwargs):
+    """
+    Patched torch.load that sets weights_only=False for checkpoint loading
+    to maintain compatibility with PyTorch 2.6 changes.
+    """
+    # For checkpoint files, we need to allow arbitrary Python objects
+    if 'weights_only' not in kwargs:
+        # Check if this is likely a checkpoint file by looking at the file path
+        if args and isinstance(args[0], (str, os.PathLike)):
+            path = str(args[0])
+            if any(keyword in path.lower() for keyword in ['checkpoint', 'rng_state', 'optimizer', 'scheduler']):
+                kwargs['weights_only'] = False
+        else:
+            # For other cases, keep the new PyTorch 2.6 default behavior
+            kwargs['weights_only'] = True
+    
+    return _original_torch_load(*args, **kwargs)
+
+# Apply the patch
+torch.load = _patched_torch_load
+print("Applied PyTorch 2.6 compatibility patch for checkpoint loading")
+
+# -------------------------------
 # Repro & env hygiene
 # -------------------------------
 SEED = 42
