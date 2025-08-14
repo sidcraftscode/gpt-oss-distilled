@@ -38,10 +38,14 @@ def load_model(model_path, model_name):
 
 def generate_response(model, tokenizer, prompt, model_name):
     # Format prompt
-    if hasattr(tokenizer, 'apply_chat_template'):
-        messages = [{"role": "user", "content": prompt}]
-        text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    else:
+    try:
+        if hasattr(tokenizer, 'apply_chat_template') and tokenizer.chat_template is not None:
+            messages = [{"role": "user", "content": prompt}]
+            text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        else:
+            text = f"User: {prompt}\nAssistant:"
+    except Exception:
+        # Fallback if chat template fails
         text = f"User: {prompt}\nAssistant:"
     
     inputs = tokenizer(text, return_tensors="pt").to(model.device)
