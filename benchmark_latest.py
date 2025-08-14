@@ -118,15 +118,7 @@ def main():
             "name": "Original SmolLM2-1.7B"
         },
         {
-            "path": "/workspace/distillation/gpt-oss-distilled/results/checkpoint-171",
-            "name": "Distilled SmolLM2-1.7B (1k samples)"
-        },
-        {
-            "path": "/workspace/distillation/gpt-oss-distilled/results/checkpoint-312",
-            "name": "Distilled SmolLM2-1.7B (5k samples)"
-        },
-        {
-            "path": "/workspace/distillation/gpt-oss-distilled/results/checkpoint-624",
+            "path": "sidcraftscode/cece-1.7b",
             "name": "Distilled SmolLM2-1.7B (10k samples)"
         }
         # Skipping checkpoint-936 (corrupted during save)
