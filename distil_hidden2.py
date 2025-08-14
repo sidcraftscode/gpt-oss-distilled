@@ -574,6 +574,18 @@ class KDTrainer(SFTTrainer):
             )
         return self.optimizer
 
+    def _move_optimizer_to_device(self, device):
+        """Move all optimizer states to the specified device"""
+        if self.optimizer is None:
+            return
+        
+        for state in self.optimizer.state.values():
+            for k, v in state.items():
+                if torch.is_tensor(v):
+                    state[k] = v.to(device)
+
+
+
     def _mean_pool(self, h: torch.Tensor, m: torch.Tensor) -> torch.Tensor:
         """Sequence-pooled representation: h [B,T,D], m [B,T] -> [B,D]"""
         m = m.unsqueeze(-1).to(h.dtype)  # [B, T, 1]
@@ -772,8 +784,26 @@ trainer = KDTrainer(
 trainer.add_callback(GradProbe())
 
 # -------------------------------
+# Fix optimizer device mismatch when resuming from checkpoint
+# -------------------------------
+def fix_optimizer_device_mismatch(trainer):
+    """Ensure all optimizer states are on the same device as model parameters"""
+    if trainer.optimizer is not None:
+        model_device = next(trainer.model.parameters()).device
+        for state in trainer.optimizer.state.values():
+            for k, v in state.items():
+                if torch.is_tensor(v) and v.device != model_device:
+                    state[k] = v.to(model_device)
+        print(f"Fixed optimizer device mismatch: moved states to {model_device}")
+
+# -------------------------------
 # Train & Save
 # -------------------------------
+# Create optimizer first if resuming from checkpoint
+if config["training"]["resume_from_checkpoint"]:
+    trainer.create_optimizer()
+    fix_optimizer_device_mismatch(trainer)
+
 trainer.train(resume_from_checkpoint=config["training"]["resume_from_checkpoint"])
 
 # Save student model + tokenizer
