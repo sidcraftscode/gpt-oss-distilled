@@ -86,7 +86,7 @@ config = {
         "weight_decay": 0.01,
         "warmup_ratio": 0.03,
         "lr_scheduler_type": "linear",
-        "resume_from_checkpoint": None,
+        "resume_from_checkpoint": "results/checkpoint-7000",
         "bf16": True,
         "fp16": False,
         "max_grad_norm": 0.5,
