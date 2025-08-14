@@ -567,15 +567,13 @@ class KDTrainer(SFTTrainer):
             # Filter out empty groups
             all_groups = [g for g in student_groups + adaptor_groups if g["params"]]
             
-            # Use fused AdamW on Hopper/Ampere GPUs for better performance
-            # Disable fused AdamW if resuming from checkpoint to avoid CPU/GPU state mismatch
-            use_fused = (
-                torch.cuda.is_available()
-                and torch.cuda.get_device_capability(0)[0] >= 8
-                and not bool(self.args.resume_from_checkpoint)
-            )
+            # Hard-disable fused AdamW and foreach to avoid device mismatch issues
+            # These optimizations require strict device homogeneity which is problematic with checkpoints
             self.optimizer = torch.optim.AdamW(
-                all_groups, lr=self.args.learning_rate, fused=use_fused
+                all_groups,
+                lr=self.args.learning_rate,
+                fused=False,      # hard off - avoid strict device requirements
+                foreach=False     # also avoid foreach multi-tensor kernel
             )
         return self.optimizer
 
@@ -783,21 +781,28 @@ def fix_optimizer_device_mismatch(trainer):
     """Ensure all optimizer states are on the same device as model parameters"""
     if trainer.optimizer is not None:
         model_device = next(trainer.model.parameters()).device
-        moved_count = 0
+        moved = 0
         for state in trainer.optimizer.state.values():
-            for k, v in state.items():
+            for k, v in list(state.items()):
                 if torch.is_tensor(v) and v.device != model_device:
-                    state[k] = v.to(model_device)
-                    moved_count += 1
-        if moved_count > 0:
-            print(f"Fixed optimizer device mismatch: moved {moved_count} tensors to {model_device}")
+                    state[k] = v.to(model_device, non_blocking=True)
+                    moved += 1
+        if moved:
+            print(f"Fixed optimizer device mismatch: moved {moved} tensors to {model_device}")
 
 class OptimizerDeviceFix(TrainerCallback):
-    """Callback to ensure optimizer states are on correct device when training begins"""
-    def on_train_begin(self, args, state, control, **kwargs):
-        trainer = kwargs.get("trainer")
+    """Callback to ensure optimizer states are on correct device throughout training"""
+    
+    def _fix(self, trainer):
         if trainer:
             fix_optimizer_device_mismatch(trainer)
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        self._fix(kwargs.get("trainer"))
+
+    def on_step_begin(self, args, state, control, **kwargs):
+        # Runs after HF potentially (re)loads optimizer state, but before optimizer.step()
+        self._fix(kwargs.get("trainer"))
 
 # -------------------------------
 # Train & Save  
@@ -818,9 +823,9 @@ if config["training"]["resume_from_checkpoint"]:
     )
     trainer.create_scheduler(num_training_steps=total_train_steps)
     
-    # Prepare everything with Accelerate
-    trainer.model, trainer.optimizer, trainer.lr_scheduler = trainer.accelerator.prepare(
-        trainer.model, trainer.optimizer, trainer.lr_scheduler
+    # Prepare everything with Accelerate (including adaptor for consistent device placement)
+    trainer.model, trainer.adaptor, trainer.optimizer, trainer.lr_scheduler = trainer.accelerator.prepare(
+        trainer.model, trainer.adaptor, trainer.optimizer, trainer.lr_scheduler
     )
     
     # Fix device mismatch after Accelerate preparation
