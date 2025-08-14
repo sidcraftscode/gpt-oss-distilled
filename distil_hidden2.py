@@ -568,7 +568,12 @@ class KDTrainer(SFTTrainer):
             all_groups = [g for g in student_groups + adaptor_groups if g["params"]]
             
             # Use fused AdamW on Hopper/Ampere GPUs for better performance
-            use_fused = torch.cuda.is_available() and torch.cuda.get_device_capability(0)[0] >= 8
+            # Disable fused AdamW if resuming from checkpoint to avoid CPU/GPU state mismatch
+            use_fused = (
+                torch.cuda.is_available()
+                and torch.cuda.get_device_capability(0)[0] >= 8
+                and not bool(self.args.resume_from_checkpoint)
+            )
             self.optimizer = torch.optim.AdamW(
                 all_groups, lr=self.args.learning_rate, fused=use_fused
             )
