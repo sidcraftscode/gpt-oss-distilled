@@ -801,16 +801,24 @@ class OptimizerDeviceFix(TrainerCallback):
 if config["training"]["resume_from_checkpoint"]:
     print(f"Resuming from checkpoint: {config['training']['resume_from_checkpoint']}")
     
-    # Create and prepare optimizer/scheduler with Accelerate BEFORE training
+    # Create optimizer
     trainer.create_optimizer()
-    trainer.create_scheduler(num_training_steps=trainer.get_num_train_epochs() * len(trainer.get_train_dataloader()))
     
-    # Let Accelerate prepare everything
+    # Compute total training steps (same way HF Trainer does internally)
+    train_dataloader = trainer.get_train_dataloader()
+    total_train_steps = (
+        len(train_dataloader)
+        // training_args.gradient_accumulation_steps
+        * training_args.num_train_epochs
+    )
+    trainer.create_scheduler(num_training_steps=total_train_steps)
+    
+    # Prepare everything with Accelerate
     trainer.model, trainer.optimizer, trainer.lr_scheduler = trainer.accelerator.prepare(
         trainer.model, trainer.optimizer, trainer.lr_scheduler
     )
     
-    # NOW fix device mismatch after Accelerate preparation
+    # Fix device mismatch after Accelerate preparation
     fix_optimizer_device_mismatch(trainer)
 
 # Add callback for extra safety
